@@ -30,7 +30,6 @@
   .tag.ok { color: var(--ok); } .tag.stale, .tag.missing { color: var(--bad); } .tag.differs { color: var(--warn); } .tag.none { color: var(--muted); }
   details { margin-top: 8px; } summary { cursor: pointer; }
   h2 { font-size: 1.1rem; margin: 0 0 8px; }
-  .note { border-left: 3px solid var(--accent); padding: 4px 0 4px 12px; margin-top: 16px; }
   button { font: inherit; }
   #fixmsg.ok { color: var(--ok); } #fixmsg.bad { color: var(--bad); }
   small { color: var(--muted); }
@@ -46,7 +45,7 @@
     <div id="drop" tabindex="0" role="button" aria-label="Choose Player.nfp">
       <div>Drop your <code>Player.nfp</code> here</div>
       <button type="button" id="pick">or choose the file</button>
-      <input type="file" id="file" multiple hidden>
+      <input type="file" id="file" hidden>
     </div>
     <p><small>Your file is read inside this page, in your browser. Nothing is uploaded. The source is two small files you can read.</small></p>
     <details>
@@ -80,18 +79,15 @@
       <ol>
         <li>Quit the game and Steam completely.</li>
         <li>Back up the original files (copy them somewhere safe).</li>
-        <li>Replace the original <code>Player.nfp</code> with the fixed copy. Rename it back to <code>Player.nfp</code>. Do this in <b>both</b> the Steam cloud folder and the local profile folder, so Steam Cloud does not restore the old one. Do the same for any <code>.xsdat</code> files.</li>
-        <li>Start the game and reopen the last campaign you played (Chapter 3, "The Last Viking"). This was enough to unlock the achievement for the person who found this, but there is no guarantee it works for you.</li>
+        <li>Replace the original <code>Player.nfp</code> with the fixed copy. Rename it back to <code>Player.nfp</code>. Do this in <b>both</b> the Steam cloud folder and the local profile folder, so Steam Cloud does not restore the old one.</li>
+        <li>Start the game and reopen the last scenario, "The Battle of Stamford Bridge". There is no guarantee this works.</li>
       </ol>
       <p><small><b>Use at your own risk.</b> This is an unofficial community tool, provided as is. The author is not responsible for any data loss or corruption. Back up your files first.</small></p>
       <label><input type="checkbox" id="ack"> I have quit the game and Steam, and I have backed up my files.</label>
       <p>
         <button type="button" id="dl-nfp" disabled>Download fixed Player.nfp</button>
-        <button type="button" id="dl-x1" hidden disabled>Download fixed nocam1.xsdat</button>
-        <button type="button" id="dl-x2" hidden disabled>Download fixed nocam2.xsdat</button>
       </p>
       <p id="fixmsg"></p>
-      <p id="xsnote" class="note"></p>
     </div>
   </div>
 
@@ -152,7 +148,6 @@ function fail(msg) {
 
 // ---- state for the optional fix ----
 let profileBuf = null, profileResult = null;
-const xsBuf = { 1: null, 2: null };
 
 function download(bytes, name) {
   const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
@@ -171,23 +166,11 @@ function renderFix() {
     const row = TREASURES.find((t) => t[0] === c.letter);
     return `<li>${row[3]} (mission ${TREASURES.indexOf(row) + 1}), Chapter ${c.chapter} list: -1 &rarr; ${c.to}</li>`;
   }).join("");
-  const parts = [];
-  for (const ch of [1, 2]) {
-    const b = $("dl-x" + ch);
-    let n = 0;
-    if (xsBuf[ch]) { try { n = patchXsdat(xsBuf[ch], ch, plan.target).changes.length; } catch (e) { parts.push(e.message); } }
-    b.hidden = n === 0;
-    if (xsBuf[ch] && n) parts.push(`nocam${ch}.xsdat: ${n} value${n > 1 ? "s" : ""} to fix`);
-  }
-  $("xsnote").textContent = parts.length
-    ? "Extra files found: " + parts.join("; ") + ". Use the fixed copies of those too, in the same way."
-    : "Extra, only if the fixed Player.nfp alone does not unlock the achievement: also drop in nocam1.xsdat and nocam2.xsdat from the local profile folder (they carry your treasure list between chapters), then use the fixed copies of those files too.";
   box.hidden = false;
   syncButtons();
 }
 function syncButtons() {
-  const ok = $("ack").checked;
-  $("dl-nfp").disabled = !ok; $("dl-x1").disabled = !ok; $("dl-x2").disabled = !ok;
+  $("dl-nfp").disabled = !$("ack").checked;
 }
 $("ack").addEventListener("change", syncButtons);
 
@@ -198,35 +181,16 @@ $("dl-nfp").addEventListener("click", async () => {
     say(`Done: ${changes.length} value${changes.length > 1 ? "s" : ""} changed. Checked: nothing else changed, the file re-opens, and no stale items remain. Rename it to Player.nfp when you replace the original.`, "ok");
   } catch (err) { say(err.message || String(err), "bad"); }
 });
-for (const ch of [1, 2]) {
-  $("dl-x" + ch).addEventListener("click", () => {
-    try {
-      const plan = planProfileFix(profileResult);
-      const { bytes, changes } = patchXsdat(xsBuf[ch], ch, plan.target);
-      download(bytes, `nocam${ch}.fixed.xsdat`);
-      say(`nocam${ch}.xsdat: ${changes.length} value changed. Rename it to nocam${ch}.xsdat when you replace the original.`, "ok");
-    } catch (err) { say(err.message || String(err), "bad"); }
-  });
-}
 
 async function handle(files) {
   files = Array.from(files || []);
   if (!files.length) return;
   say("");
-  const profiles = [];
-  for (const f of files) {
-    const m = /nocam([12])\.xsdat$/i.exec(f.name);
-    if (m) xsBuf[m[1]] = await f.arrayBuffer();
-    else if (/\.xsdat$/i.test(f.name)) return fail("Only nocam1.xsdat and nocam2.xsdat are used. This one is not needed: " + f.name);
-    else profiles.push(f);
-  }
+  $("ack").checked = false;
+  if (files.length > 1) return fail("Please drop one file at a time: your Player.nfp.");
   try {
-    if (profiles.length > 1) return fail("Please drop one Player.nfp at a time.");
-    if (profiles.length === 1) {
-      profileBuf = await profiles[0].arrayBuffer();
-      profileResult = await parseProfile(profileBuf);
-    }
-    if (!profileResult) return fail("Drop Player.nfp first (the .xsdat files are only used for the fix).");
+    profileBuf = await files[0].arrayBuffer();
+    profileResult = await parseProfile(profileBuf);
     show(profileResult);
     renderFix();
   } catch (err) { profileBuf = profileResult = null; $("fix").hidden = true; fail(err.message || String(err)); }

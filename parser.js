@@ -146,25 +146,6 @@ async function patchProfile(arrayBuffer) {
   return { bytes, changes };
 }
 
-// nocam1.xsdat / nocam2.xsdat: plain little-endian int32 list, one number per treasure letter (A, B, C, ...).
-const XSDAT_COUNT = { 1: 6, 2: 11 };
-
-function patchXsdat(arrayBuffer, chapter, target) {
-  const n = XSDAT_COUNT[chapter];
-  if (!n || arrayBuffer.byteLength !== n * 4) throw new Error(`nocam${chapter}.xsdat has an unexpected size; refusing.`);
-  const out = new Uint8Array(arrayBuffer.slice(0));
-  const dv = new DataView(out.buffer);
-  const changes = [];
-  for (let i = 0; i < n; i++) {
-    const letter = TREASURES[i][0];
-    if (dv.getInt32(i * 4, true) === -1 && target[letter] !== undefined) {
-      dv.setInt32(i * 4, target[letter], true);
-      changes.push({ chapter, letter, from: -1, to: target[letter] });
-    }
-  }
-  return { bytes: out, changes };
-}
-
 async function parseProfile(arrayBuffer) {
   const raw = new Uint8Array(arrayBuffer);
   let data;
@@ -176,4 +157,4 @@ async function parseProfile(arrayBuffer) {
   return analyse(readEntries(data));
 }
 
-if (typeof module !== "undefined") module.exports = { parseProfile, analyse, readEntries, inflateRaw, deflateRaw, planProfileFix, patchProfile, patchXsdat, TREASURES };
+if (typeof module !== "undefined") module.exports = { parseProfile, analyse, readEntries, inflateRaw, deflateRaw, planProfileFix, patchProfile, TREASURES };
