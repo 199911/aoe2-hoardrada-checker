@@ -30,6 +30,7 @@
   .tag.ok { color: var(--ok); } .tag.stale, .tag.missing { color: var(--bad); } .tag.differs { color: var(--warn); } .tag.none { color: var(--muted); }
   details { margin-top: 8px; } summary { cursor: pointer; }
   h2 { font-size: 1.1rem; margin: 0 0 8px; }
+  .note { border-left: 3px solid var(--accent); padding: 4px 0 4px 12px; margin-top: 16px; }
   button { font: inherit; }
   #fixmsg.ok { color: var(--ok); } #fixmsg.bad { color: var(--bad); }
   small { color: var(--muted); }
@@ -44,8 +45,7 @@
   <div class="card">
     <div id="drop" tabindex="0" role="button" aria-label="Choose Player.nfp">
       <div>Drop your <code>Player.nfp</code> here</div>
-      <div><small>Optional, for the fix: also <code>nocam1.xsdat</code> and <code>nocam2.xsdat</code> from the local profile folder</small></div>
-      <button type="button" id="pick">or choose the file(s)</button>
+      <button type="button" id="pick">or choose the file</button>
       <input type="file" id="file" multiple hidden>
     </div>
     <p><small>Your file is read inside this page, in your browser. Nothing is uploaded. The source is two small files you can read.</small></p>
@@ -76,8 +76,7 @@
       <h2>Fix the stale items</h2>
       <p>This makes a <b>fixed copy</b>. Your original file is not changed. Each stale <b>-1</b> becomes the value already recorded for that item in the chapter where you collected it:</p>
       <ul id="changes"></ul>
-      <p id="xsnote"><small></small></p>
-      <p><b>Before you use the fixed files:</b></p>
+      <p><b>Before you use the fixed file:</b></p>
       <ol>
         <li>Quit the game and Steam completely.</li>
         <li>Back up the original files (copy them somewhere safe).</li>
@@ -91,6 +90,7 @@
         <button type="button" id="dl-x2" hidden disabled>Download fixed nocam2.xsdat</button>
       </p>
       <p id="fixmsg"></p>
+      <p id="xsnote" class="note"></p>
     </div>
   </div>
 
@@ -177,9 +177,9 @@ function renderFix() {
     b.hidden = n === 0;
     if (xsBuf[ch] && n) parts.push(`nocam${ch}.xsdat: ${n} value${n > 1 ? "s" : ""} to fix`);
   }
-  $("xsnote").firstChild.textContent = parts.length
-    ? "Chapter-carry files found: " + parts.join("; ") + "."
-    : "Tip: the local profile folder also has nocam1.xsdat and nocam2.xsdat, which carry the same lists between chapters. Drop them in with Player.nfp to fix those too. (The original fix changed them as well. I do not know if they are required.)";
+  $("xsnote").textContent = parts.length
+    ? "Extra files found: " + parts.join("; ") + ". Use the fixed copies of those too, in the same way."
+    : "Extra, only if the fixed Player.nfp alone does not unlock the achievement: also drop in nocam1.xsdat and nocam2.xsdat from the local profile folder (they carry your treasure list between chapters), then use the fixed copies of those files too.";
   box.hidden = false;
   syncButtons();
 }
