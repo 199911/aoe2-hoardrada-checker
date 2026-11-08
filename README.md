@@ -22,8 +22,23 @@ Open `index.html` in a browser (Chrome 103+, Safari 16.4+ or Firefox 113+), or h
 - Values 1 and 2 are the two decision choices; -1 means not collected.
 - `nocam1.xsdat` and `nocam2.xsdat` (in the local profile folder) carry the same lists between chapters as 4-byte integers.
 
+## Optional fix
+
+If stale items are found, the page can build a **fixed copy** (the original is never modified):
+
+- Each stale `-1` is set to the value already recorded for that item in the chapter where it was collected.
+- For `Player.nfp` it checks that only those 8-byte values changed, that the new file decompresses back to exactly
+  the patched data, and that no stale items remain. If any check fails it refuses.
+- Drop `nocam1.xsdat` / `nocam2.xsdat` (local profile folder) together with `Player.nfp` to fix those too.
+- Before using the fixed files: quit the game and Steam, back up the originals, then replace the originals with the
+  fixed copies (renamed back to their original names) in **both** the Steam cloud folder and the local profile
+  folder, so Steam Cloud does not restore the old one.
+
+There is no guarantee it works. It unlocked the achievement for the one profile it was tried on.
+
 ## Status
 
-Tested on one real profile (and a copy with the -1 values restored) using the parsing logic only. The browser
-file-drop UI and `DecompressionStream` inflate step have not yet been exercised in a real browser.
-This is not an official tool, and a game update can change the format.
+The parsing and patch logic were tested offline on one real profile and variants of it (stale items, missing items,
+refusal cases). The browser file-drop UI and the browser's `DecompressionStream` / `CompressionStream` steps have not
+yet been exercised in a real browser. Needs a browser with `deflate-raw` support (Chrome 103+, Safari 16.4+,
+Firefox 113+). This is not an official tool, and a game update can change the format.

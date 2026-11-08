@@ -29,6 +29,9 @@
   .tag { font-size: .8rem; padding: 1px 7px; border-radius: 10px; border: 1px solid currentColor; }
   .tag.ok { color: var(--ok); } .tag.stale, .tag.missing { color: var(--bad); } .tag.differs { color: var(--warn); } .tag.none { color: var(--muted); }
   details { margin-top: 8px; } summary { cursor: pointer; }
+  h2 { font-size: 1.1rem; margin: 0 0 8px; }
+  button { font: inherit; }
+  #fixmsg.ok { color: var(--ok); } #fixmsg.bad { color: var(--bad); }
   small { color: var(--muted); }
   [hidden] { display: none !important; }
 </style>
@@ -41,8 +44,9 @@
   <div class="card">
     <div id="drop" tabindex="0" role="button" aria-label="Choose Player.nfp">
       <div>Drop your <code>Player.nfp</code> here</div>
-      <button type="button" id="pick">or choose the file</button>
-      <input type="file" id="file" hidden>
+      <div><small>Optional, for the fix: also <code>nocam1.xsdat</code> and <code>nocam2.xsdat</code> from the local profile folder</small></div>
+      <button type="button" id="pick">or choose the file(s)</button>
+      <input type="file" id="file" multiple hidden>
     </div>
     <p><small>Your file is read inside this page, in your browser. Nothing is uploaded. The source is two small files you can read.</small></p>
     <details>
@@ -67,6 +71,26 @@
         <tbody id="rows"></tbody>
       </table>
       <p><small>1 and 2 are the two decision choices (which is which depends on the item). <b>-1</b> means the game has this item recorded as <b>not collected</b>. A dash means that chapter's list has no entry.</small></p>
+    </div>
+    <div id="fix" class="card" hidden>
+      <h2>Fix the stale items</h2>
+      <p>This makes a <b>fixed copy</b>. Your original file is not changed. Each stale <b>-1</b> becomes the value already recorded for that item in the chapter where you collected it:</p>
+      <ul id="changes"></ul>
+      <p id="xsnote"><small></small></p>
+      <p><b>Before you use the fixed files:</b></p>
+      <ol>
+        <li>Quit the game and Steam completely.</li>
+        <li>Back up the original files (copy them somewhere safe).</li>
+        <li>Replace the original <code>Player.nfp</code> with the fixed copy. Rename it back to <code>Player.nfp</code>. Do this in <b>both</b> the Steam cloud folder and the local profile folder, so Steam Cloud does not restore the old one. Do the same for any <code>.xsdat</code> files.</li>
+        <li>Start the game and reopen the last campaign you played (Chapter 3, "The Last Viking"). This was enough to unlock the achievement for the person who found this, but there is no guarantee it works for you.</li>
+      </ol>
+      <label><input type="checkbox" id="ack"> I have quit the game and Steam, and I have backed up my files.</label>
+      <p>
+        <button type="button" id="dl-nfp" disabled>Download fixed Player.nfp</button>
+        <button type="button" id="dl-x1" hidden disabled>Download fixed nocam1.xsdat</button>
+        <button type="button" id="dl-x2" hidden disabled>Download fixed nocam2.xsdat</button>
+      </p>
+      <p id="fixmsg"></p>
     </div>
   </div>
 
@@ -123,19 +147,95 @@ function fail(msg) {
   const box = $("error"); box.textContent = msg; box.hidden = false;
 }
 
-async function handle(file) {
-  if (!file) return;
-  try { show(await parseProfile(await file.arrayBuffer())); }
-  catch (err) { fail(err.message || String(err)); }
+// ---- state for the optional fix ----
+let profileBuf = null, profileResult = null;
+const xsBuf = { 1: null, 2: null };
+
+function download(bytes, name) {
+  const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+  const a = document.createElement("a"); a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+function say(text, cls) { const m = $("fixmsg"); m.textContent = text; m.className = cls || ""; }
+
+function renderFix() {
+  const box = $("fix");
+  if (!profileResult) { box.hidden = true; return; }
+  const plan = planProfileFix(profileResult);
+  if (plan.changes.length === 0) { box.hidden = true; return; }
+  $("changes").innerHTML = plan.changes.map((c) => {
+    const row = TREASURES.find((t) => t[0] === c.letter);
+    return `<li>${row[3]} (mission ${TREASURES.indexOf(row) + 1}), Chapter ${c.chapter} list: -1 &rarr; ${c.to}</li>`;
+  }).join("");
+  const parts = [];
+  for (const ch of [1, 2]) {
+    const b = $("dl-x" + ch);
+    let n = 0;
+    if (xsBuf[ch]) { try { n = patchXsdat(xsBuf[ch], ch, plan.target).changes.length; } catch (e) { parts.push(e.message); } }
+    b.hidden = n === 0;
+    if (xsBuf[ch] && n) parts.push(`nocam${ch}.xsdat: ${n} value${n > 1 ? "s" : ""} to fix`);
+  }
+  $("xsnote").firstChild.textContent = parts.length
+    ? "Chapter-carry files found: " + parts.join("; ") + "."
+    : "Tip: the local profile folder also has nocam1.xsdat and nocam2.xsdat, which carry the same lists between chapters. Drop them in with Player.nfp to fix those too. (The original fix changed them as well. I do not know if they are required.)";
+  box.hidden = false;
+  syncButtons();
+}
+function syncButtons() {
+  const ok = $("ack").checked;
+  $("dl-nfp").disabled = !ok; $("dl-x1").disabled = !ok; $("dl-x2").disabled = !ok;
+}
+$("ack").addEventListener("change", syncButtons);
+
+$("dl-nfp").addEventListener("click", async () => {
+  try {
+    const { bytes, changes } = await patchProfile(profileBuf);
+    download(bytes, "Player.fixed.nfp");
+    say(`Done: ${changes.length} value${changes.length > 1 ? "s" : ""} changed. Checked: nothing else changed, the file re-opens, and no stale items remain. Rename it to Player.nfp when you replace the original.`, "ok");
+  } catch (err) { say(err.message || String(err), "bad"); }
+});
+for (const ch of [1, 2]) {
+  $("dl-x" + ch).addEventListener("click", () => {
+    try {
+      const plan = planProfileFix(profileResult);
+      const { bytes, changes } = patchXsdat(xsBuf[ch], ch, plan.target);
+      download(bytes, `nocam${ch}.fixed.xsdat`);
+      say(`nocam${ch}.xsdat: ${changes.length} value changed. Rename it to nocam${ch}.xsdat when you replace the original.`, "ok");
+    } catch (err) { say(err.message || String(err), "bad"); }
+  });
+}
+
+async function handle(files) {
+  files = Array.from(files || []);
+  if (!files.length) return;
+  say("");
+  const profiles = [];
+  for (const f of files) {
+    const m = /nocam([12])\.xsdat$/i.exec(f.name);
+    if (m) xsBuf[m[1]] = await f.arrayBuffer();
+    else if (/\.xsdat$/i.test(f.name)) return fail("Only nocam1.xsdat and nocam2.xsdat are used. This one is not needed: " + f.name);
+    else profiles.push(f);
+  }
+  try {
+    if (profiles.length > 1) return fail("Please drop one Player.nfp at a time.");
+    if (profiles.length === 1) {
+      profileBuf = await profiles[0].arrayBuffer();
+      profileResult = await parseProfile(profileBuf);
+    }
+    if (!profileResult) return fail("Drop Player.nfp first (the .xsdat files are only used for the fix).");
+    show(profileResult);
+    renderFix();
+  } catch (err) { profileBuf = profileResult = null; $("fix").hidden = true; fail(err.message || String(err)); }
 }
 
 $("pick").addEventListener("click", (e) => { e.stopPropagation(); fileInput.click(); });
 drop.addEventListener("click", () => fileInput.click());
 drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") fileInput.click(); });
-fileInput.addEventListener("change", () => handle(fileInput.files[0]));
+fileInput.addEventListener("change", () => { handle(fileInput.files); fileInput.value = ""; });
 ["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
 ["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
-drop.addEventListener("drop", (e) => handle(e.dataTransfer.files[0]));
+drop.addEventListener("drop", (e) => handle(e.dataTransfer.files));
 </script>
 </body>
 </html>
