@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hoardrada Checker</title>
+<style>
+  :root { --bg:#fafaf8; --fg:#1d1d1b; --muted:#666; --card:#fff; --line:#ddd; --ok:#1a7f37; --bad:#b42318; --warn:#9a6700; --accent:#2b5fb4; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#161614; --fg:#ecebe6; --muted:#9a9990; --card:#1f1f1c; --line:#38382f; --ok:#4cc38a; --bad:#f97066; --warn:#e5b23c; --accent:#7aa7ff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  p.lead { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  #drop { border: 2px dashed var(--line); border-radius: 10px; padding: 28px 16px; text-align: center; cursor: pointer; }
+  #drop.over { border-color: var(--accent); }
+  #drop button { font: inherit; margin-top: 8px; }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; word-break: break-all; }
+  #summary { font-weight: 600; }
+  #summary.ok { color: var(--ok); } #summary.bad { color: var(--bad); } #summary.warn { color: var(--warn); }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td.item { white-space: normal; }
+  .v-ok { color: var(--ok); } .v-miss { color: var(--bad); font-weight: 600; } .v-none { color: var(--muted); }
+  .tag { font-size: .8rem; padding: 1px 7px; border-radius: 10px; border: 1px solid currentColor; }
+  .tag.ok { color: var(--ok); } .tag.stale, .tag.missing { color: var(--bad); } .tag.differs { color: var(--warn); } .tag.none { color: var(--muted); }
+  details { margin-top: 8px; } summary { cursor: pointer; }
+  small { color: var(--muted); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Hoardrada Checker</h1>
+  <p class="lead">Checks your Age of Empires II: DE profile for the "Hoardrada" (Viking Sagas) achievement bug. Read-only: it never changes your file.</p>
+
+  <div class="card">
+    <div id="drop" tabindex="0" role="button" aria-label="Choose Player.nfp">
+      <div>Drop your <code>Player.nfp</code> here</div>
+      <button type="button" id="pick">or choose the file</button>
+      <input type="file" id="file" hidden>
+    </div>
+    <p><small>Your file is read inside this page, in your browser. Nothing is uploaded. The source is two small files you can read.</small></p>
+    <details>
+      <summary>Where is Player.nfp?</summary>
+      <p><b>Mac (Steam cloud copy):</b><br><code>~/Library/Application Support/Steam/userdata/&lt;your id&gt;/813780/remote/Player.nfp</code></p>
+      <p><b>Mac (local copy):</b><br><code>~/Library/Application Support/Feral Interactive/Age Of Empires II/VFS/User/Games/Age of Empires 2 DE/&lt;steam id&gt;/profile/Player.nfp</code></p>
+      <p><b>Windows:</b><br><code>C:\Users\&lt;you&gt;\Games\Age of Empires 2 DE\&lt;steam id&gt;\profile\Player.nfp</code> or the Steam <code>userdata\&lt;your id&gt;\813780\remote</code> folder.</p>
+      <p><small>On Mac, in Finder use Go &gt; Go to Folder (Shift+Cmd+G) and paste the path.</small></p>
+    </details>
+  </div>
+
+  <div id="error" class="card" hidden></div>
+
+  <div id="result" hidden>
+    <div class="card">
+      <div id="summary"></div>
+      <p id="explain"></p>
+    </div>
+    <div class="card table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Mission</th><th>Item</th><th>Ch 1 list</th><th>Ch 2 list</th><th>Ch 3 list</th><th>Status</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <p><small>1 and 2 are the two decision choices (which is which depends on the item). <b>-1</b> means the game has this item recorded as <b>not collected</b>. A dash means that chapter's list has no entry.</small></p>
+    </div>
+  </div>
+
+  <p><small>Community tool, not affiliated with Microsoft or Forgotten Empires. The file format was worked out by observation and may change with game updates.</small></p>
+</main>
+<script src="parser.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const drop = $("drop"), fileInput = $("file");
+
+function fmt(v) {
+  if (v === null) return '<span class="v-none">&ndash;</span>';
+  if (v === -1) return '<span class="v-miss">-1</span>';
+  return '<span class="v-ok">' + v + "</span>";
+}
+const LABEL = { ok: "OK", stale: "Stale", missing: "Not collected", differs: "Check", none: "No data" };
+
+function show(result) {
+  $("error").hidden = true;
+  const { rows, present } = result;
+  $("rows").innerHTML = rows.map((r, i) =>
+    `<tr><td>${i + 1}</td><td>${r.mission}</td><td class="item">${r.item}</td>` +
+    [1, 2, 3].map((c) => `<td>${fmt(r.vals[c])}</td>`).join("") +
+    `<td><span class="tag ${r.status}">${LABEL[r.status]}</span></td></tr>`).join("");
+
+  const stale = rows.filter((r) => r.status === "stale");
+  const missing = rows.filter((r) => r.status === "missing");
+  const none = rows.filter((r) => r.status === "none");
+  const s = $("summary"), e = $("explain");
+  if (present.length === 0) {
+    s.className = "bad"; s.textContent = "No Viking Sagas data found in this profile.";
+    e.textContent = "Either the campaign has not been started on this profile, or this is the wrong file.";
+  } else if (stale.length) {
+    s.className = "bad";
+    s.textContent = "Found " + stale.length + " stale item" + (stale.length > 1 ? "s" : "") + ": " + stale.map((r) => r.item).join(", ") + ".";
+    e.textContent = "These are recorded as collected in one chapter's list but as not collected (-1) in another. This matches the known bug where replaying a mission does not update the later chapters, which can block the Hoardrada achievement.";
+  } else if (missing.length) {
+    s.className = "warn";
+    s.textContent = missing.length + " item" + (missing.length > 1 ? "s are" : " is") + " not collected: " + missing.map((r) => r.item).join(", ") + ".";
+    e.textContent = "These show as not collected in every list that has them. Find them in the campaign first.";
+  } else if (none.length) {
+    s.className = "warn";
+    s.textContent = "No problem found, but " + none.length + " item" + (none.length > 1 ? "s have" : " has") + " no record yet.";
+    e.textContent = "You probably have not reached those missions yet.";
+  } else {
+    s.className = "ok"; s.textContent = "All 15 items are recorded as collected, and the chapter lists agree.";
+    e.textContent = "If the achievement still has not unlocked, this particular bug is probably not the cause.";
+  }
+  $("result").hidden = false;
+}
+
+function fail(msg) {
+  $("result").hidden = true;
+  const box = $("error"); box.textContent = msg; box.hidden = false;
+}
+
+async function handle(file) {
+  if (!file) return;
+  try { show(await parseProfile(await file.arrayBuffer())); }
+  catch (err) { fail(err.message || String(err)); }
+}
+
+$("pick").addEventListener("click", (e) => { e.stopPropagation(); fileInput.click(); });
+drop.addEventListener("click", () => fileInput.click());
+drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") fileInput.click(); });
+fileInput.addEventListener("change", () => handle(fileInput.files[0]));
+["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", (e) => handle(e.dataTransfer.files[0]));
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+# Real profile data and test fixtures must never be committed
+*.nfp
+*.xsdat
+*.aoe2spgame
+test-files/
+hoardrada-test-files/
+fixtures*/
+.DS_Store
