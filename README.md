@@ -39,6 +39,8 @@ There is no guarantee it works. It unlocked the achievement for the one profile 
 ## Status
 
 The parsing and patch logic were tested offline on one real profile and variants of it (stale items, missing items,
-refusal cases). The browser file-drop UI and the browser's `DecompressionStream` / `CompressionStream` steps have not
-yet been exercised in a real browser. Needs a browser with `deflate-raw` support (Chrome 103+, Safari 16.4+,
-Firefox 113+). This is not an official tool, and a game update can change the format.
+refusal cases). The page was also exercised in a real browser (on the live GitHub Pages site): analysing a profile with
+a stale item, building the fixed `Player.nfp`, and re-opening it showed all items consistent. The `.xsdat` download
+buttons were only checked offline, and the game itself has not been tested with a browser-built file.
+Needs a browser with `deflate-raw` support (Chrome 103+, Safari 16.4+, Firefox 113+).
+This is not an official tool, and a game update can change the format.
