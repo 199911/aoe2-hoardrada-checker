@@ -1,5 +1,8 @@
 # Hoardrada Checker
 
+> **Use at your own risk.** This is an unofficial community tool, provided as is (see [LICENSE](LICENSE)). The author is
+> not responsible for any data loss or corruption. Back up your files before replacing anything.
+
 A read-only, in-browser checker for the Age of Empires II: DE **Hoardrada** achievement bug (The Viking Sagas).
 
 Drop your `Player.nfp` on the page. It lists the 15 legendary items per chapter and flags any item that is
