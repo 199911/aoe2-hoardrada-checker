@@ -22,6 +22,11 @@ Open `index.html` in a browser (Chrome 103+, Safari 16.4+ or Firefox 113+), or h
 - Values 1 and 2 are the two decision choices; -1 means not collected.
 - `nocam1.xsdat` and `nocam2.xsdat` (in the local profile folder) carry the same lists between chapters as 4-byte integers.
 
+## Bug reports
+
+Please open an [issue](https://github.com/199911/aoe2-hoardrada-checker/issues/new?template=bug_report.md).
+Do not attach your `Player.nfp`: it contains your game data. Copy the checker's table or error message instead.
+
 ## Optional fix
 
 If stale items are found, the page can build a **fixed copy** (the original is never modified):
