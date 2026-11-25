@@ -69,11 +69,11 @@
         <thead><tr><th>#</th><th>Mission</th><th>Item</th><th>Ch 1 list</th><th>Ch 2 list</th><th>Ch 3 list</th><th>Status</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
-      <p><small>1 and 2 are the two decision choices (which is which depends on the item). <b>-1</b> means the game has this item recorded as <b>not collected</b>. A dash means that chapter's list has no entry.</small></p>
+      <p><small>1 and 2 are the two decision choices (which is which depends on the item). <b>-1</b> or <b>0</b> means that chapter's list does <b>not</b> have this item recorded as collected. A dash means that chapter's list has no entry.</small></p>
     </div>
     <div id="fix" class="card" hidden>
       <h2>Fix the stale items</h2>
-      <p>This makes a <b>fixed copy</b>. Your original file is not changed. Each stale <b>-1</b> becomes the value already recorded for that item in the chapter where you collected it:</p>
+      <p>This makes a <b>fixed copy</b>. Your original file is not changed. It only <b>copies</b> a value the game already recorded as collected in an earlier chapter's list into a later chapter's list that is missing it. It never marks an item as collected that is not recorded as collected somewhere in your profile:</p>
       <ul id="changes"></ul>
       <p><b>Before you use the fixed file:</b></p>
       <ol>
@@ -102,7 +102,7 @@ const drop = $("drop"), fileInput = $("file");
 
 function fmt(v) {
   if (v === null) return '<span class="v-none">&ndash;</span>';
-  if (v === -1) return '<span class="v-miss">-1</span>';
+  if (v <= 0) return '<span class="v-miss">' + v + "</span>";
   return '<span class="v-ok">' + v + "</span>";
 }
 const LABEL = { ok: "OK", stale: "Stale", missing: "Not collected", differs: "Check", none: "No data" };
@@ -125,7 +125,7 @@ function show(result) {
   } else if (stale.length) {
     s.className = "bad";
     s.textContent = "Found " + stale.length + " stale item" + (stale.length > 1 ? "s" : "") + ": " + stale.map((r) => r.item).join(", ") + ".";
-    e.textContent = "These are recorded as collected in one chapter's list but as not collected (-1) in another. This matches the known bug where replaying a mission does not update the later chapters, which can block the Hoardrada achievement.";
+    e.textContent = "These are recorded as collected in an earlier chapter's list but not (-1 or 0) in a later chapter's list. This matches the known bug where the record is not copied forward to the later chapters, which can block the Hoardrada achievement.";
   } else if (missing.length) {
     s.className = "warn";
     s.textContent = missing.length + " item" + (missing.length > 1 ? "s are" : " is") + " not collected: " + missing.map((r) => r.item).join(", ") + ".";
@@ -134,6 +134,11 @@ function show(result) {
     s.className = "warn";
     s.textContent = "No problem found, but " + none.length + " item" + (none.length > 1 ? "s have" : " has") + " no record yet.";
     e.textContent = "You probably have not reached those missions yet.";
+  } else if (rows.some((r) => r.status === "differs")) {
+    const d = rows.filter((r) => r.status === "differs");
+    s.className = "warn";
+    s.textContent = d.length + " item" + (d.length > 1 ? "s differ" : " differs") + " between chapters: " + d.map((r) => r.item).join(", ") + ".";
+    e.textContent = "Nothing looks like the known copy-forward problem, so there is nothing for this tool to fix. Check the table.";
   } else {
     s.className = "ok"; s.textContent = "All 15 items are recorded as collected, and the chapter lists agree.";
     e.textContent = "If the achievement still has not unlocked, this particular bug is probably not the cause.";
@@ -164,7 +169,7 @@ function renderFix() {
   if (plan.changes.length === 0) { box.hidden = true; return; }
   $("changes").innerHTML = plan.changes.map((c) => {
     const row = TREASURES.find((t) => t[0] === c.letter);
-    return `<li>${row[3]} (mission ${TREASURES.indexOf(row) + 1}), Chapter ${c.chapter} list: -1 &rarr; ${c.to}</li>`;
+    return `<li>${row[3]} (mission ${TREASURES.indexOf(row) + 1}), Chapter ${c.chapter} list: ${c.from} &rarr; ${c.to} (copied from an earlier chapter's list)</li>`;
   }).join("");
   box.hidden = false;
   syncButtons();

@@ -22,7 +22,8 @@ Open `index.html` in a browser (Chrome 103+, Safari 16.4+ or Firefox 113+), or h
 - Inside, saved campaign decisions are repeated entries: `int64 key length | key text | int64 value` (little endian).
 - Keys look like `PKEY:nocam3:TreasureE`. `nocam1`/`nocam2`/`nocam3` are the three chapters. Each chapter keeps its own
   running list of treasures: Chapter 1 has A-F, Chapter 2 has A-K, Chapter 3 has A-O.
-- Values 1 and 2 are the two decision choices; -1 means not collected.
+- Values 1 and 2 are the two decision choices (collected). -1 and 0 mean the list does not have the item recorded as
+  collected; -1 is "mission finished without it" and 0 is "never set" (both meanings are inferred, not documented).
 - `nocam1.xsdat` and `nocam2.xsdat` (in the local profile folder) carry the same lists between chapters as 4-byte
   integers. This tool does not read or patch them, and it is unknown whether they matter for the achievement.
 
@@ -35,7 +36,11 @@ Do not attach your `Player.nfp`: it contains your game data. Copy the checker's 
 
 If stale items are found, the page can build a **fixed copy** (the original is never modified):
 
-- Each stale `-1` is set to the value already recorded for that item in the chapter where it was collected.
+- It only **copies** a value the game already recorded as collected (1 or 2) from an earlier chapter's list into a
+  later chapter's list that holds `-1` or `0` for the same item. This is the "missing copy" case. Earlier lists are
+  never changed.
+- It is not a way to get items you did not collect. An item that is not recorded as collected in any list is never
+  touched, and the page refuses to patch if the set of collected items would change.
 - For `Player.nfp` it checks that only those 8-byte values changed, that the new file decompresses back to exactly
   the patched data, and that no stale items remain. If any check fails it refuses.
 - Before using the fixed file: quit the game and Steam, back up the original, then replace the original with the

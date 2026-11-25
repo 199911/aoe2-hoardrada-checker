@@ -57,7 +57,8 @@ function readEntries(data) {
   return entries;
 }
 
-// chapterLists: { 1: {A: 2, ...}, 2: {...}, 3: {...} } (numbers, -1 = not collected)
+// lists: { 1: {A: 2, ...}, 2: {...}, 3: {...} }. 1 / 2 = collected (the two decision choices);
+// -1 / 0 = not recorded as collected in that chapter's list (meaning of 0 is inferred: probably "never set").
 function analyse(entries) {
   const lists = { 1: {}, 2: {}, 3: {} };
   for (const [key, val] of entries) {
@@ -70,40 +71,40 @@ function analyse(entries) {
     for (const c of [1, 2, 3]) vals[c] = letter in lists[c] ? lists[c][letter] : null;
     const seen = [1, 2, 3].map((c) => vals[c]).filter((v) => v !== null);
     const collectedSomewhere = seen.some((v) => v > 0);
-    const missingSomewhere = seen.some((v) => v === -1);
     const differs = new Set(seen).size > 1;
+    // "Stale" = a LATER chapter's list has no collected value (0 or -1) although an earlier list does.
+    // That is the missing-copy case. It never applies to items that are not collected in any list.
+    const first = [1, 2, 3].find((c) => vals[c] !== null && vals[c] > 0);
+    const staleLater = first !== undefined && [1, 2, 3].some((c) => c > first && vals[c] !== null && vals[c] <= 0);
     let status = "ok";
     if (seen.length === 0) status = "none";
     else if (!collectedSomewhere) status = "missing";
-    else if (missingSomewhere) status = "stale";
+    else if (staleLater) status = "stale";
     else if (differs) status = "differs";
     return { letter, chapter, mission, item, vals, status };
   });
   return { rows, present, lists };
 }
 
-// The value an item should have everywhere: the first collected (>0) value found, Chapter 1 first.
-function targetValues(lists) {
-  const target = {};
+// Which values would be changed, and to what. This only COPIES a value the game already recorded as collected
+// (> 0) in an earlier chapter's list into a later chapter's list that has 0 or -1 for the same item.
+// An item that is not recorded as collected in any list is never touched, and earlier lists are never changed.
+function planProfileFix(result) {
+  const changes = [];
   for (const [letter] of TREASURES) {
+    const first = [1, 2, 3].find((c) => result.lists[c][letter] > 0);
+    if (first === undefined) continue;
+    const to = result.lists[first][letter];
     for (const c of [1, 2, 3]) {
-      const v = lists[c][letter];
-      if (v !== undefined && v > 0) { target[letter] = v; break; }
+      const v = result.lists[c][letter];
+      if (c > first && v !== undefined && v <= 0) changes.push({ chapter: c, letter, from: v, to });
     }
   }
-  return target;
+  return { changes };
 }
 
-// Which -1 values would be changed, and to what.
-function planProfileFix(result) {
-  const target = targetValues(result.lists);
-  const changes = [];
-  for (const c of [1, 2, 3]) {
-    for (const [letter, v] of Object.entries(result.lists[c])) {
-      if (v === -1 && target[letter] !== undefined) changes.push({ chapter: c, letter, from: -1, to: target[letter] });
-    }
-  }
-  return { changes, target };
+function collectedLetters(lists) {
+  return TREASURES.map(([l]) => l).filter((l) => [1, 2, 3].some((c) => lists[c][l] > 0)).join("");
 }
 
 async function deflateRaw(bytes) {
@@ -121,7 +122,8 @@ function sameBytes(a, b) {
 async function patchProfile(arrayBuffer) {
   const original = await inflateRaw(new Uint8Array(arrayBuffer));
   const entries = readEntries(original);
-  const { changes } = planProfileFix(analyse(entries));
+  const before = analyse(entries);
+  const { changes } = planProfileFix(before);
   if (changes.length === 0) throw new Error("Nothing to fix in this profile.");
 
   const patched = original.slice();
@@ -129,7 +131,8 @@ async function patchProfile(arrayBuffer) {
   const allowed = [];
   for (const ch of changes) {
     const off = entries.offsets.get(`nocam${ch.chapter}:Treasure${ch.letter}`);
-    if (off === undefined || dv.getBigInt64(off, true) !== -1n) throw new Error("Unexpected data layout; refusing to patch.");
+    if (!(ch.to > 0)) throw new Error("Refusing to write a value that is not 'collected'.");
+    if (off === undefined || dv.getBigInt64(off, true) !== BigInt(ch.from)) throw new Error("Unexpected data layout; refusing to patch.");
     dv.setBigInt64(off, BigInt(ch.to), true);
     allowed.push([off, off + 8]);
   }
@@ -143,6 +146,8 @@ async function patchProfile(arrayBuffer) {
   if (!sameBytes(back, patched)) throw new Error("Safety check failed (re-compression did not round-trip); refusing.");
   const after = analyse(readEntries(back));
   if (after.rows.some((r) => r.status === "stale")) throw new Error("Safety check failed (items still stale after patch); refusing.");
+  // Anti-cheat invariant: the set of items recorded as collected somewhere must be exactly the same as before.
+  if (collectedLetters(after.lists) !== collectedLetters(before.lists)) throw new Error("Safety check failed (would change which items are collected); refusing.");
   return { bytes, changes };
 }
 
